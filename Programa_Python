@@ -4,48 +4,107 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from tensorflow.keras.utils import to_categorical
+from sklearn.metrics import confusion_matrix, classification_report
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 Datos = 'basededatos.xlsx'
 df = pd.read_excel(Datos, engine='openpyxl')
 
+
+# Datos de entrada y salida
 X = df.iloc[:, :6].values
-# Datos de entrada
-
 y = df.iloc[:, 6].values
-# Datos de salida (Covertura Nevulosa)
 
-# Estandarizamos los datos
+
+# Estandarización
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
-#Convertimos las etiquetas a formato categórico
+
+# Codificación de etiquetas
 encoder = LabelEncoder()
-y = encoder.fit_transform(y)
-y = to_categorical(y, num_classes=8)
+y_encoded = encoder.fit_transform(y)
 
-# Dividimos los datos en entrenamiento y prueba (80%, 20%)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01, random_state=42)
 
-# Creamos la red neuronal
+# División estratificada
+X_train, X_test, y_train_enc, y_test_enc = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
+
+# One-hot encoding
+y_train = to_categorical(y_train_enc, num_classes=8)
+y_test = to_categorical(y_test_enc, num_classes=8)
+
+
+# Modelo
 modelo = tf.keras.Sequential([
-tf.keras.layers.Dense(64, activation='relu', input_shape= (X_train.shape[1],)),
-tf.keras.layers.Dense(32, activation='relu'),
-tf.keras.layers.Dense(8, activation='softmax')])
+    tf.keras.layers.Dense(64, activation='relu', input_shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.Dense(8, activation='softmax')
+])
 
-# Compilamos el modelo
-modelo.compile(optimizer='AdamW', loss='categorical_crossentropy',
-metrics=['accuracy'])
+modelo.compile(optimizer='AdamW',
+               loss='categorical_crossentropy',
+               metrics=['accuracy'])
 
-# Entramos el modelo
-modelo.fit(X_train, y_train, epochs=100, batch_size=16, validation_data=(X_test, y_test))
 
-# Evaluamos el modelo
+# Entrenamiento
+modelo.fit(X_train, y_train,
+           epochs=100,
+           batch_size=16,
+           validation_data=(X_test, y_test))
+
+
+# Evaluación
 score = modelo.evaluate(X_test, y_test)
 print(f"Pérdida: {score[0]}, Precisión: {score[1]}")
 
-# Número de parámetros
-# Parámetros = 6*64 + 64 + 64*32 + 32 + 32*8 + 8 = 2792
 modelo.summary()
-total_params = modelo.count_params()
-print(f"El número de parámetros es: {total_params}")
+print(f"El número de parámetros es: {modelo.count_params()}")
+
+
+# MATRIZ DE CONFUSIÓN - ENTRENAMIENTO
+y_train_pred_probs = modelo.predict(X_train)
+y_train_pred = np.argmax(y_train_pred_probs, axis=1)
+
+cm_train = confusion_matrix(y_train_enc, y_train_pred)
+
+print("\nMatriz de Confusión - Entrenamiento:")
+print(cm_train)
+
+plt.figure(figsize=(8,8))
+sns.heatmap(cm_train, annot=True, fmt='d', cmap='Greens',
+            xticklabels=encoder.classes_,
+            yticklabels=encoder.classes_)
+plt.xlabel("Predicción")
+plt.ylabel("Valor Real")
+plt.title("Matriz de Confusión - Entrenamiento")
+plt.show()
+
+print("\nReporte de Clasificación - Entrenamiento:")
+print(classification_report(y_train_enc, y_train_pred,
+                            target_names=[str(c) for c in encoder.classes_]))
+
+
+# MATRIZ DE CONFUSIÓN - PRUEBA
+y_test_pred_probs = modelo.predict(X_test)
+y_test_pred = np.argmax(y_test_pred_probs, axis=1)
+
+cm_test = confusion_matrix(y_test_enc, y_test_pred)
+
+print("\nMatriz de Confusión - Prueba:")
+print(cm_test)
+
+plt.figure(figsize=(8,8))
+sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues',
+            xticklabels=encoder.classes_,
+            yticklabels=encoder.classes_)
+plt.xlabel("Predicción")
+plt.ylabel("Valor Real")
+plt.title("Matriz de Confusión - Prueba")
+plt.show()
+
+print("\nReporte de Clasificación - Prueba:")
+print(classification_report(y_test_enc, y_test_pred,
+                            target_names=[str(c) for c in encoder.classes_]))
 
